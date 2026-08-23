@@ -65,7 +65,7 @@ export class Connection {
             const res = await fetch(`${this.url}/events?version=${version}`)
 
             /** we fell to far behind, we need to fully reload instead of incremental catch-up */
-            if (res.status === 409) {
+            if (res.status === 410) {
                 await this.start()
                 return
             }
@@ -73,7 +73,7 @@ export class Connection {
             const data = await res.json()
             if (data.steps.length > 0) {
                 const steps = data.steps.map((s: any) => Step.fromJSON(schema, s))
-                const tr = receiveTransaction(this.state, steps, data.clientIds)
+                const tr = receiveTransaction(this.state, steps, data.clientIDs)
                 this.state = this.state.apply(tr)
                 this.emit()
                 this.trySend() // remote steps may have unblocked a pending local send
@@ -105,7 +105,7 @@ export class Connection {
                 body: JSON.stringify({
                     steps: sandable.steps.map(s => s.toJSON()),
                     version: sandable.version,
-                    clientId: sandable.clientID
+                    clientID: sandable.clientID
                 })
             })
 
@@ -123,9 +123,9 @@ export class Connection {
             // exactly like the server now has them recorded.
 
             /** Success: mark those steps as confirmed by receiving them back through
-             * receiveTransaction(with our own clientId repeated) exactly like the server now has them recorded */
-            const clientIds = sandable.steps.map(() => sandable.clientID)
-            const tr = receiveTransaction(this.state, sandable.steps, clientIds)
+             * receiveTransaction(with our own clientID repeated) exactly like the server now has them recorded */
+            const clientIDs = sandable.steps.map(() => sandable.clientID)
+            const tr = receiveTransaction(this.state, sandable.steps, clientIDs)
             this.state = this.state.apply(tr)
             this.emit()
         } finally {

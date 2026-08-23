@@ -4,7 +4,7 @@ import { schema } from "../shared/schema"
 
 export interface StoredStep {
     step: Step
-    clientId: string
+    clientID: string
 }
 
 const MAX_STEP_HISTORY = 1000
@@ -36,7 +36,7 @@ export class Instance {
      * we return false and the client must fetch what it missed(via getEventsSince) and
      * rebase before retrying.
      */
-    addSteps(version: number, steps: Step[], clientId: string) {
+    addSteps(version: number, steps: Step[], clientID: string) {
         this.checkVersion(version)
         if (this.version !== version) return false
 
@@ -53,10 +53,10 @@ export class Instance {
 
         this.doc = doc
         this.version += steps.length
-        this.steps = this.steps.concat(steps.map(step => ({ step, clientId })))
+        this.steps = this.steps.concat(steps.map(step => ({ step, clientID })))
 
         if (this.steps.length > MAX_STEP_HISTORY) {
-            this.steps.slice(this.steps.length = MAX_STEP_HISTORY)
+            this.steps.slice(this.steps.length - MAX_STEP_HISTORY)
         }
 
         return { version: this.version }
@@ -76,7 +76,7 @@ export class Instance {
         const slice = this.steps.slice(startIndex)
         return {
             steps: slice.map(({ step }) => step),
-            clientIds: slice.map(({ clientId }) => clientId)
+            clientIDs: slice.map(({ clientID }) => clientID)
         }
     }
 }

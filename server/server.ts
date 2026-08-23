@@ -46,14 +46,14 @@ app.get('/events', async (req, res) => {
                     clearTimeout(timer)
                     resolve()
                 }})
-                data = instance.getEventsSince(version) || { steps: [], clientIds: [] }
             })
+            data = instance.getEventsSince(version) || { steps: [], clientIDs: [] }
         }
 
         res.json({
             version: instance.version,
-            steps: instance.steps.map(({ step }) => step),
-            clientIds: instance.steps.map(({ clientId }) => clientId)
+            steps: data.steps.map((s) => s.toJSON()),
+            clientIDs: data.clientIDs
         })
     } catch (err: any) {
         res.status(err.status || 500).json({ error: err.message })
@@ -61,13 +61,13 @@ app.get('/events', async (req, res) => {
 })
 
 /** POST /events a client submitting its local steps.
- * Body: { version, steps: JSON[], clientId } */
+ * Body: { version, steps: JSON[], clientID } */
 app.post('/events', (req, res) => {
-    const { version, steps: stepsJson, clientId } = req.body
+    const { version, steps: stepsJson, clientID } = req.body
 
     try {
         const steps = (stepsJson as any[]).map(s => Step.fromJSON(schema, s))
-        const result = instance.addSteps(version, steps, clientId)
+        const result = instance.addSteps(version, steps, clientID)
         if(!result) {
             /** version conflict: someone commited first. client must poll /events, rebase its pending steps
              * over what it gets back, and resubmit */
