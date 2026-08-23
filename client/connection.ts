@@ -13,7 +13,8 @@ type Listener = (state: EditorState) => void
 export class Connection {
     state: EditorState | null = null
     private listener: Listener | null = null
-    private sendingSteps = false
+    /** true whenever a poll or a send is in flight */
+    private busy = false
 
     constructor(private url: string) {}
 
@@ -41,7 +42,7 @@ export class Connection {
             plugins: [collab({ version: data.version })]
         })
         this.emit()
-        this.poll()
+        this.loop()
     }
 
     /** Called by the editor whenever user or remote update changes the document */
@@ -49,7 +50,30 @@ export class Connection {
         if (!this.state) return
         this.state = this.state.apply(tr)
         this.emit()
-        this.trySend()
+        /** don't call trySend() directly so the single loop decide whether to send or
+         * poll next, * so we never have both in fight at once */
+        if (!this.busy) this.loop()
+    }
+
+    /**
+     * The one place that decides what to do next:
+     * either there are unconfirmed local steps to send
+     * or there's nothing to send and we should long-poll for remote updates.
+     */
+    private async loop() {
+        if (this.busy || !this.state) return
+        this.busy = true
+        try {
+            const sandable = sendableSteps(this.state)
+            if (sandable) {
+                await this.send(sandable)
+            } else {
+                await this.poll()
+            }
+        } finally {
+            this.busy = false
+            this.loop()
+        }
     }
 
     /**
@@ -65,7 +89,7 @@ export class Connection {
             const res = await fetch(`${this.url}/events?version=${version}`)
 
             /** we fell to far behind, we need to fully reload instead of incremental catch-up */
-            if (res.status === 410) {
+            if (!res.ok) {
                 await this.start()
                 return
             }
@@ -76,13 +100,11 @@ export class Connection {
                 const tr = receiveTransaction(this.state, steps, data.clientIDs)
                 this.state = this.state.apply(tr)
                 this.emit()
-                this.trySend() // remote steps may have unblocked a pending local send
             }
         } catch (e) {
             /** Network hiccup — brief backoff, then keep polling. */
             await new Promise(r => setTimeout(r, 1000))
         }
-        this.poll()
     }
 
     /**
@@ -90,14 +112,9 @@ export class Connection {
      * we do nothing here as the next poll() response will bring in the steps we were missing, rebase our
      * pending once via receiveTransaction, and then trySend() gets called again to retry.
      */
-    private async trySend() {
-        if (this.sendingSteps || !this.state) return
+    private async send(sandable: ReturnType<typeof sendableSteps>) {
+        if (!sandable || !this.state) return
 
-        const sandable = sendableSteps(this.state)
-
-        if (!sandable) return
-
-        this.sendingSteps = true
         try {
             const res = await fetch(`${this.url}/events`, {
                 method: "POST",
@@ -113,14 +130,13 @@ export class Connection {
             if (res.status === 409) {
                 return
             }
+            /** stale — loop() will poll next and pick up what we missed */
+            if (res.status === 400) {
+                await this.start()
+                return
+            }
 
             if (!res.ok) throw new Error(`submit failed: ${res.status}`)
-
-            //
-
-            // Success: mark those steps as confirmed by receiving them back
-            // through receiveTransaction (with our own clientID repeated),
-            // exactly like the server now has them recorded.
 
             /** Success: mark those steps as confirmed by receiving them back through
              * receiveTransaction(with our own clientID repeated) exactly like the server now has them recorded */
@@ -128,10 +144,8 @@ export class Connection {
             const tr = receiveTransaction(this.state, sandable.steps, clientIDs)
             this.state = this.state.apply(tr)
             this.emit()
-        } finally {
-            this.sendingSteps = false
-            /** In case more local edits queued up while we were sending */
-            this.trySend()
+        } catch (e) {
+            await new Promise(r => setTimeout(r, 1000))
         }
     }
 }

@@ -56,7 +56,7 @@ export class Instance {
         this.steps = this.steps.concat(steps.map(step => ({ step, clientID })))
 
         if (this.steps.length > MAX_STEP_HISTORY) {
-            this.steps.slice(this.steps.length - MAX_STEP_HISTORY)
+            this.steps = this.steps.slice(this.steps.length - MAX_STEP_HISTORY)
         }
 
         return { version: this.version }
