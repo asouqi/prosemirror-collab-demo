@@ -1,0 +1,31 @@
+{
+  "name": "prosemirror-collab-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A minimal, from-scratch learning demo of ProseMirror collaborative editing (OT + central authority + rebasing).",
+  "main": "server/server.js",
+  "scripts": {
+    "build:client": "esbuild client/index.ts --bundle --outfile=public/bundle.js",
+    "watch:client": "esbuild client/index.ts --bundle --outfile=public/bundle.js --watch",
+    "build:server": "tsc -p tsconfig.json",
+    "start": "npm run build:server && node dist/server/server.js",
+    "dev": "npm run build:client && npm start"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "prosemirror-collab": "^1.3.1",
+    "prosemirror-example-setup": "^1.2.3",
+    "prosemirror-model": "^1.22.1",
+    "prosemirror-schema-basic": "^1.2.3",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-transform": "^1.9.0",
+    "prosemirror-view": "^1.33.9"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.23.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^7.0.2"
+  }
+}
