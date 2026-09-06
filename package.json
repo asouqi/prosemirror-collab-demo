@@ -9,7 +9,8 @@
     "watch:client": "esbuild client/index.ts --bundle --outfile=public/bundle.js --watch",
     "build:server": "tsc -p tsconfig.json",
     "start": "npm run build:server && node dist/server/server.js",
-    "dev": "npm run build:client && npm start"
+    "dev": "npm run build:client && npm start",
+    "test:ot": "vitest run"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -26,6 +27,7 @@
     "@types/node": "^26.2.0",
     "esbuild": "^0.23.0",
     "ts-node": "^10.9.2",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   }
 }

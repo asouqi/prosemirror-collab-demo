@@ -15,6 +15,8 @@ export class Connection {
     private listener: Listener | null = null
     /** true whenever a poll or a send is in flight */
     private busy = false
+    private mustPollFirst = false
+    private pollAbort: AbortController | null = null
 
     constructor(private url: string) {}
 
@@ -50,6 +52,11 @@ export class Connection {
         if (!this.state) return
         this.state = this.state.apply(tr)
         this.emit()
+
+        if(sendableSteps(this.state)) {
+           this.pollAbort?.abort()
+        }
+
         /** don't call trySend() directly so the single loop decide whether to send or
          * poll next, * so we never have both in fight at once */
         if (!this.busy) this.loop()
@@ -65,9 +72,10 @@ export class Connection {
         this.busy = true
         try {
             const sandable = sendableSteps(this.state)
-            if (sandable) {
+            if (sandable && !this.mustPollFirst) {
                 await this.send(sandable)
             } else {
+                this.mustPollFirst = false
                 await this.poll()
             }
         } finally {
@@ -86,7 +94,8 @@ export class Connection {
         if (!this.state) return
         const version = getVersion(this.state)
         try {
-            const res = await fetch(`${this.url}/events?version=${version}`)
+            this.pollAbort = new AbortController()
+            const res = await fetch(`${this.url}/events?version=${version}`, { signal: this.pollAbort.signal })
 
             /** we fell to far behind, we need to fully reload instead of incremental catch-up */
             if (!res.ok) {
@@ -102,6 +111,7 @@ export class Connection {
                 this.emit()
             }
         } catch (e) {
+            if ((e as any).name === "AbortError") return
             /** Network hiccup — brief backoff, then keep polling. */
             await new Promise(r => setTimeout(r, 1000))
         }
@@ -128,6 +138,7 @@ export class Connection {
 
             /** Conflict: leave it to the next poll() to fetch+rebase, then trySend will be invoked again automatically */
             if (res.status === 409) {
+                this.mustPollFirst = true
                 return
             }
             /** stale — loop() will poll next and pick up what we missed */

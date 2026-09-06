@@ -7,7 +7,7 @@ export interface StoredStep {
     clientID: string
 }
 
-const MAX_STEP_HISTORY = 1000
+const MAX_STEP_HISTORY = 10
 
 export class Instance {
     doc: Node
