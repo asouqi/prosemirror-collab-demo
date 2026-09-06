@@ -6,14 +6,24 @@ import { Op } from "./ops"
  * b's original editing intent.
  */
 export function transform(a: Op, b: Op): OP {
-    if ((a.type === "insert" && b.type === "insert") ||
-        (a.type === "insert" && b.type === "delete")) {
+    if (a.type === "insert" && b.type === "insert") {
+        if (a.pos < b.pos) {
+            // a inserted at or before b position -> shift b forward
+            return {...b, pos: b.pos + a.text.length }
+        }
+        if(a.pos > b.pos) return b
+
+        //tie:
+        if (a.text < b.text) return {...b, pos: b.pos + a.text.length }
+        return b // b is unaffected
+    }
+
+    if (a.type === "insert" && b.type === "delete") {
         if (a.pos <= b.pos) {
             // a inserted at or before b position -> shift b forward
             return {...b, pos: b.pos + a.text.length }
-        } else {
-            return b // b is unaffected
         }
+        return b
     }
 
     if (a.type === "delete" && b.type === "insert") {
