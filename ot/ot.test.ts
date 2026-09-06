@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest"
 import { apply, Op } from "./ops"
 import { transform } from "./transform"
 
+const applyAll = (doc: string, ops: Op[]) => ops.reduce(apply, doc)
+
 /**
  * The core OT convergence property:
  *
@@ -12,8 +14,8 @@ import { transform } from "./transform"
  * incorporated (a transformed version of) the other's operation.
  */
 function assertConverges(doc: string, A: Op, B: Op) {
-    const path1 = apply(apply(doc, A), transform(A, B))
-    const path2 = apply(apply(doc, B), transform(B, A))
+    const path1 = applyAll(apply(doc, A), transform(A, B))
+    const path2 = applyAll(apply(doc, B), transform(B, A))
     expect(path1).toBe(path2)
     return path1
 }

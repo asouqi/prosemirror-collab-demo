@@ -1,42 +1,69 @@
-import { Op } from "./ops"
+import {InsertOp, Op} from "./ops"
 
 /**
- * transform(a, b) returns a new version of `b` that is safe to apply
- * after `a` has already been applied to the document, while preserving
- * b's original editing intent.
+ * Decides which of two inserts at the same position gets
+ * the left slot.
+ * Must be antisymmetric: winsLeft(a, b) === !winsLeft(b, a)
+ * whenever the two ops are distinguishable. Falls back to comparing
+ * without a site id still converge (identical text at an identical
  */
-export function transform(a: Op, b: Op): OP {
-    if (a.type === "insert" && b.type === "insert") {
-        if (a.pos < b.pos) {
-            // a inserted at or before b position -> shift b forward
-            return {...b, pos: b.pos + a.text.length }
-        }
-        if(a.pos > b.pos) return b
+function winsLeft(a: InsertOp, b: InsertOp) {
+    if (a.site !== undefined && b.site !== undefined && a.site !== b.site) {
+        return a.site < b.site
+    }
+    return a.text < b.text
+}
 
-        //tie:
-        if (a.text < b.text) return {...b, pos: b.pos + a.text.length }
-        return b // b is unaffected
+/** A zero-length delete is a no-op; drop it rather than emitting it. */
+function del(pos: number, length: number): Op[] {
+    return length > 0 ? [{ type: "delete", pos, length }] : []
+}
+
+
+/**
+ * transform(a, b) returns a *list* of operations equivalent to `b`, safe to
+ * apply in order after `a` has already been applied, preserving b's intent.
+ *
+ * A list is required because one concurrent edit can split another in two:
+ * an insert landing inside a deleted range leaves the delete with a gap.
+ * The list is also how a no-op is expressed (empty array).
+ */
+export function transform(a: Op, b: Op): Op[] {
+    if (a.type === "insert" && b.type === "insert") {
+        // a inserted at or before b position -> shift b forward
+        if (a.pos < b.pos) return [{ ...b, pos: b.pos + a.text.length }]
+        if (a.pos > b.pos) return [b]
+        // tie: only shift b if a claimed the left slot
+        return winsLeft(a, b) ? [{ ...b, pos: b.pos + a.text.length }] : [b]
     }
 
     if (a.type === "insert" && b.type === "delete") {
         if (a.pos <= b.pos) {
-            // a inserted at or before b position -> shift b forward
-            return {...b, pos: b.pos + a.text.length }
+            // a landed at or before b's range -> shift the whole range right
+            return [{...b, pos: b.pos + a.text.length }]
         }
-        return b
+        if (a.pos >= b.pos + b.length) {
+            return [b]
+        }
+        // a landed strictly inside b's range -> split b around the new text.
+        // After the left half is removed a's text sits at b.pos
+        const leftLen = a.pos - b.pos
+        return [
+            ...del(b.pos, leftLen),
+            ...del(b.pos + a.text.length, b.length - leftLen)
+        ]
     }
 
     if (a.type === "delete" && b.type === "insert") {
-        if (a.pos + a.length <=b.pos) {
-            // a deleted a range that is entirely before b -> shift b back
-            return {...b, pos: b.pos - a.length }
-        }
+        // a removed a range entirely before b -> shift b back
+        if (a.pos + a.length <= b.pos) return [{ ...b, pos: b.pos - a.length }]
         if (a.pos >= b.pos) {
-            // a deletion start at or after b insert point -> b unaffected
-            return b
+            // a's range starts at or after b's insert point -> b unaffected
+            return [b]
         }
-        // b insert point falls inside a deleted range -> clamp to a.pos
-        return {...b, pos: a.pos }
+        // b's insert point fell inside a's removed range -> clamp to a.pos.
+        // (The mirror case above splits, so the text survives on both paths.)
+        return [{ ...b, pos: a.pos }]
     }
 
     // a.type === "delete" && b.type === "delete"
@@ -45,11 +72,11 @@ export function transform(a: Op, b: Op): OP {
 
     if (del_a.pos + del_a.length <= del_b.pos) {
         // a is entirely before b -> shift b back
-        return {...del_b, pos: del_b.pos - del_a.length }
+        return [{...del_b, pos: del_b.pos - del_a.length }]
     }
     if (del_a.pos >= del_b.pos + del_b.length) {
         // a is entirely after b -> b unaffected
-        return del_b
+        return [del_b]
     }
 
     /** overlapping deletes -> shrink b to only the part that
@@ -58,9 +85,9 @@ export function transform(a: Op, b: Op): OP {
     const overlapEnd = Math.min(del_a.pos + del_a.length, del_b.pos + del_b.length)
     const overlap = Math.max(0, overlapEnd - overlapStart)
 
-    return {
+    return [{
         type: "delete",
         pos: Math.min(del_a.pos, del_b.pos),
         length: del_b.length - overlap
-    }
+    }]
 }
